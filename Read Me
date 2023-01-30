@@ -1,0 +1,406 @@
+set hostname,& ip address
+
+[root@mail1 ~]# vi /etc/selinux/config (disable selinux)
+[root@mail1 ~]# systemctl stop firewalld(disable firewall)
+[root@mail1 ~]# systemctl disable firewalld
+[root@mail1 ~]# dnf update
+[root@mail1 ~]# hostnamectl 
+[root@mail1 ~]# cat /etc/centos-release 
+CentOS Stream release 9
+[root@mail1 ~]# vi  /etc/hosts
+https://www.server-world.info/en/note?os=CentOS_Stream_9&p=mariadb&f=1 (Install MariaDB to configure Database Server)
+[root@mail1~]# dnf -y install mariadb-server mariadb 
+[root@mail1 ~]# systemctl start mariadb
+[root@mail1 ~]# systemctl enable mariadb
+[root@mail1 ~]# systemctl status mariadb
+[root@mail1 ~]#  mysql_secure_installation 
+[root@mail1 ~]# dnf -y install httpd httpd-devel
+[root@mail1 ~]# systemctl enable httpd
+[root@mail1 ~]# systemctl start httpd
+[root@mail1 ~]# systemctl status httpd
+https://www.server-world.info/en/note?os=CentOS_Stream_9&p=mariadb&f=6 (Install phpMyAdmin)
+[root@mail1 ~]# dnf config-manager --set-enabled crb
+[root@mail1 ~]# dnf install epel-release epel-next-release -y
+[root@mail1 ~]# dnf repolist
+[root@mail1 ~]# dnf install phpMyAdmin php 
+[root@mail1 ~]# cp /etc/httpd/conf.d/phpMyAdmin.conf /etc/httpd/conf.d/phpMyAdmin.conf.25-01-2023
+[root@mail1 ~]#  vi /etc/httpd/conf.d/phpMyAdmin.conf
+ # line 13 : add access permission for your internal nwetwork if you need
+ Require all granted
+[root@www ~]# systemctl restart httpd 
+Access to [http://(your hostname or IP address)/phpmyadmin/] with web browser from any Clients which are in the Network you set to allow.
+[root@mail1 ~]# mysql -u root -p
+MariaDB [(none)]> create database postfix_accounts;
+Query OK, 1 row affected (0.000 sec)
+MariaDB [(none)]> grant all on postfix_accounts.* to postfix_admin@localhost identified by 'Jagdish@2023';
+Query OK, 0 rows affected (0.029 sec)
+MariaDB [(none)]> flush privileges;
+Query OK, 0 rows affected (0.001 sec)
+MariaDB [(none)]> exit
+[root@mail1 ~]# mysql -u root -p
+MariaDB [(none)]> CREATE TABLE `postfix_accounts`.`domains_table` ( `DomainId` INT NOT NULL AUTO_INCREMENT , `DomainName` VARCHAR(50) NOT NULL , PRIMARY KEY (`DomainId`)) ENGINE = InnoDB;
+Query OK, 0 rows affected (0.093 sec)
+
+MariaDB [(none)]> CREATE TABLE `postfix_accounts`.`accounts_table` ( 
+    `AccountId` INT NOT NULL AUTO_INCREMENT,  
+    `DomainId` INT NOT NULL,  
+    `password` VARCHAR(300) NOT NULL,  
+    `Email` VARCHAR(100) NOT NULL,  
+    PRIMARY KEY (`AccountId`),  
+    UNIQUE KEY `Email` (`Email`),  
+    FOREIGN KEY (DomainId) REFERENCES domains_table(DomainId) ON DELETE CASCADE 
+) ENGINE = InnoDB;
+Query OK, 0 rows affected (0.592 sec)
+
+MariaDB [(none)]> CREATE TABLE `postfix_accounts`.`alias_table` (
+        `AliasId` INT NOT NULL AUTO_INCREMENT, 
+         `DomainId` INT NOT NULL, 
+         `Source` varchar(100) NOT NULL, 
+         `Destination` varchar(100) NOT NULL, 
+         PRIMARY KEY (`AliasId`), 
+         FOREIGN KEY (DomainId) REFERENCES domains_table(DomainId) ON DELETE CASCADE
+     ) ENGINE = InnoDB;
+Query OK, 0 rows affected (0.104 sec)
+MariaDB [(none)]> INSERT INTO `postfix_accounts`.`domains_table` (DomainName) VALUES ('jagdish.local');  
+Query OK, 1 row affected (0.025 sec)
+MariaDB [(none)]> INSERT INTO `postfix_accounts`.`accounts_table` (DomainId, password, Email) VALUES (1, ENCRYPT('Password', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'tech@jagdish.local');  
+Query OK, 1 row affected (0.026 sec)
+MariaDB [(none)]> INSERT INTO `postfix_accounts`.`accounts_table` (DomainId, password, Email) VALUES (1, ENCRYPT('Password', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'jmutai@jagdish.local');  
+Query OK, 1 row affected (0.016 sec)
+MariaDB [(none)]> INSERT INTO `postfix_accounts`.`alias_table` (DomainId, Source, Destination) VALUES (1, 'talktous@jagdish.local', 'sales@jagdish.local');
+Query OK, 1 row affected (0.020 sec)
+
+[root@mail1 ~]# dnf -y install postfix postfix-mysql  dovecot dovecot-mysql
+[root@mail1 ~]# cp /etc/postfix/master.cf /etc/postfix/master.cf.20-01-2023
+[root@mail1 ~]# vi /etc/postfix/master.cf
+ 
+ submission inet n       -       n       -       -       smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt   ## Comment this if you have no SSL(not recommended)
+  -o smtpd_tls_auth_only=yes            ## Comment this if you have no SSL(not recommended)
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
+  -o milter_macro_daemon_name=ORIGINATING
+  -o smtpd_reject_unlisted_recipient=no
+pickup    unix  n       -       n       60      1       pickup
+cleanup   unix  n       -       n       -       0       cleanup
+qmgr      unix  n       -       n       300     1       qmgr
+tlsmgr    unix  -       -       n       1000?   1       tlsmgr
+rewrite   unix  -       -       n       -       -       trivial-rewrite
+bounce    unix  -       -       n       -       0       bounce
+defer     unix  -       -       n       -       0       bounce
+trace     unix  -       -       n       -       0       bounce
+verify    unix  -       -       n       -       1       verify
+flush     unix  n       -       n       1000?   0       flush
+proxymap  unix  -       -       n       -       -       proxymap
+proxywrite unix -       -       n       -       1       proxymap
+smtp      unix  -       -       n       -       -       smtp
+relay     unix  -       -       n       -       -       smtp
+
+showq     unix  n       -       n       -       -       showq
+error     unix  -       -       n       -       -       error
+retry     unix  -       -       n       -       -       error
+discard   unix  -       -       n       -       -       discard
+local     unix  -       n       n       -       -       local
+#virtual   unix  -       n       n       -       -       virtual
+lmtp      unix  -       -       n       -       -       lmtp
+anvil     unix  -       -       n       -       1       anvil
+scache    unix  -       -       n       -       1       scache
+  
+Add the following dovecot-related configs at the bottom of the file
+dovecot   unix  -       n       n       -       -       pipe
+    flags=DRhu user=vmail:vmail argv=/usr/libexec/dovecot/deliver -f ${sender} -d ${recipient}
+[root@mail1 ~]# cp /etc/postfix/main.cf /etc/postfix/main.cf.20-01-2023
+[root@mail1 ~]# vi /etc/postfix/main.cf
+myhostname = mail1.jagdish.local
+mydomain = jagdish.local
+myorigin = $myhostname
+inet_interfaces = all
+#inet_interfaces = localhost ( Comment this line)
+mydestination = $myhostname, localhost.$mydomain, localhost
+smtpd_recipient_restrictions = permit_mynetworks
+home_mailbox = Maildir/
+
+Add the following configuration lines to the end of the file.
+append_dot_mydomain = no
+biff = no
+config_directory = /etc/postfix
+dovecot_destination_recipient_limit = 1
+message_size_limit = 4194304
+#smtpd_tls_key_file = /etc/postfix/ssl/yourkey.key           ##SSL Key
+#smtpd_tls_cert_file = /etc/postfix/ssl/yourcertificate.crt  ##SSL Cert
+smtpd_use_tls=yes
+smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+smtpd_tls_security_level=may
+virtual_transport = dovecot
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+virtual_mailbox_domains = mysql:/etc/postfix/database-domains.cf
+virtual_mailbox_maps = mysql:/etc/postfix/database-users.cf
+virtual_alias_maps = mysql:/etc/postfix/database-alias.cf
+[root@mail1 ~]#  vi /etc/postfix/database-domains.cf (create new file)
+user = postfix_admin
+password = Jagdish@2023
+hosts = 127.0.0.1
+dbname = postfix_accounts
+query = SELECT 1 FROM domains_table WHERE DomainName='%s'
+[root@mail1 ~]#  vi /etc/postfix/database-users.cf (create new file)
+user = postfix_admin
+password = Jagdish@2023
+hosts = 127.0.0.1
+dbname = postfix_accounts
+query = SELECT 1 FROM accounts_table WHERE Email='%s'
+[root@mail1 ~]# vi /etc/postfix/database-alias.cf (create new file)
+user = postfix_admin
+password = Jagdish@2023
+hosts = 127.0.0.1
+dbname = postfix_accounts
+query = SELECT Destination FROM alias_table WHERE Source='%s'
+[root@mail1 ~]# sudo chmod 640 /etc/postfix/database-domains.cf
+[root@mail1 ~]# sudo chmod 640 /etc/postfix/database-users.cf
+[root@mail1 ~]# sudo chmod 640 /etc/postfix/database-alias.cf
+[root@mail1 ~]# sudo chown root:postfix /etc/postfix/database-domains.cf
+[root@mail1 ~]# sudo chown root:postfix /etc/postfix/database-users.cf
+[root@mail1 ~]# sudo chown root:postfix /etc/postfix/database-alias.cf
+[root@mail1 ~]# sudo systemctl restart postfix
+[root@mail1 ~]# sudo systemctl enable postfix
+[root@mail1 ~]# sudo postmap -q jagdish.local mysql:/etc/postfix/database-domains.cf
+1
+[root@mail1 ~]# sudo postmap -q tech@jagdish.local mysql:/etc/postfix/database-users.cf
+1
+[root@mail1 ~]# sudo postmap -q jmutai@jagdish.local mysql:/etc/postfix/database-users.cf
+1
+[root@mail1 ~]# sudo postmap -q talktous@jagdish.local mysql:/etc/postfix/database-alias.cf
+sales@jagdish.in (o/p)
+[root@mail1 ~]# systemctl enable postfix
+[root@mail1 ~]# systemctl start postfix
+[root@mail1 ~]# systemctl status postfix
+[root@mail1 ~]# postfix check
+[root@mail1 ~]# sudo groupadd -g 6000 vmail 
+[root@mail1 ~]# sudo useradd -g vmail -u 6000 vmail -d /home/vmail -m
+[root@mail1 ~]# cp /etc/dovecot/dovecot.conf /etc/dovecot/dovecot.conf.21-01-2023
+[root@mail1 ~]# sudo vi /etc/dovecot/dovecot.conf
+
+listen = *, ::
+protocols = imap pop3 lmtp
+!include conf.d/*.conf
+!include_try local.conf
+log_path = /var/log/dovecot.log  ##Add this for logs
+[root@mail1 ~]# cp /etc/dovecot/conf.d/10-auth.conf /etc/dovecot/conf.d/10-auth.conf.21-03-2023
+[root@mail1 ~]# sudo vi /etc/dovecot/conf.d/10-auth.conf
+disable_plaintext_auth = yes
+auth_mechanisms = plain login
+#!include auth-system.conf.ext
+#!include auth-sql.conf.ext
+!include auth-sql.conf.ext
+#!include auth-ldap.conf.ext
+#!include auth-passwdfile.conf.ext
+#!include auth-checkpassword.conf.ext
+[root@mail1 ~]# cp /etc/dovecot/conf.d/auth-sql.conf.ext /etc/dovecot/conf.d/auth-sql.conf.ext.21-03-2023
+[root@mail1 ~]# vi /etc/dovecot/conf.d/auth-sql.conf.ext
+#Add below line in end
+passdb {
+  driver = sql
+  args = /etc/dovecot/dovecot-sql.conf.ext
+}
+
+userdb {
+  driver = static
+  args = uid=vmail gid=vmail home=/home/vmail/%d/%n/Maildir
+
+}
+
+[root@mail1 ~]# sudo mkdir /home/vmail/jagdish.local
+[root@mail1 ~]# sudo vi /etc/dovecot/dovecot-sql.conf.ext ( create new file)
+driver = mysql
+connect = "host=127.0.0.1 dbname=postfix_accounts user=postfix_admin password=Jagdish@2023"
+default_pass_scheme = SHA512-CRYPT
+password_query = SELECT Email as User, password FROM accounts_table WHERE Email='%u';
+user_query = SELECT ('6000') as 'uid',('6000') as 'gid'
+[root@mail1 ~]# cp /etc/dovecot/conf.d/10-mail.conf /etc/dovecot/conf.d/10-mail.conf.20-01-2023
+# sudo vi /etc/dovecot/conf.d/10-mail.conf
+#Add below line in end
+mail_location = maildir:/home/vmail/%d/%n/Maildir
+namespace inbox {
+  inbox = yes
+}
+mail_privileged_group = mail
+mbox_write_locks = fcntl
+root@mail1 ~]# sudo cp /etc/dovecot/conf.d/10-master.conf /etc/dovecot/conf.d/10-master.conf.20-0-2023
+root@mail1 ~]# sudo vi /etc/dovecot/conf.d/10-master.conf
+
+#Add below line in end
+service imap-login {
+  inet_listener imap {
+    port = 143
+  }
+  inet_listener imaps {
+  }
+}
+service pop3-login {
+  inet_listener pop3 {
+    port = 110
+  }
+  inet_listener pop3s {
+  }
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+   mode = 0600
+   user = postfix
+   group = postfix
+  }
+}
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+  unix_listener auth-userdb {
+   mode = 0600
+   user = vmail
+  }
+  user = dovecot
+}
+service auth-worker {
+  user = vmail
+}
+service dict {
+  unix_listener dict {
+  }
+}
+
+[root@mail1 ~]# sudo chown -R vmail:vmail /home/vmail
+[root@mail1 ~]# sudo chown -R vmail:dovecot /etc/dovecot
+[root@mail1 ~]# sudo chmod -R o-rwx /etc/dovecot 
+[root@mail1 ~]# cp /etc/dovecot/conf.d/10-ssl.conf /etc/dovecot/conf.d/10-ssl.conf.21-01-2023
+[root@mail1 ~]# sudo vi /etc/dovecot/conf.d/10-ssl.conf
+ssl = no ##If you want to use SSL here use ssl = required then add the files like:
+#ssl = required
+#ssl_cert = </etc/pki/dovecot/certs/dovecot.pem
+#ssl_key = </etc/pki/dovecot/private/dovecot.pem
+[root@mail1 ~]# systemctl enable dovecot
+[root@mail1 ~]# systemctl start dovecot
+[root@mail1 ~]# systemctl status dovecot
+mysql -u root -p
+mysql> CREATE DATABASE roundcubemail;
+mysql> CREATE USER 'roundcube_admin'@'localhost' IDENTIFIED BY 'Jagdish@2023';
+mysql> GRANT ALL ON roundcubemail.* to 'roundcube_admin'@'localhost';
+mysql> FLUSH PRIVILEGES;
+mysql> exit
+Install and configure Roundcube ( for web-mail access)                            
+Downlaod  roundcube                  
+[root@mail1 jagdish]# yum install tar
+root@mail1 jagdish]# tar -xvzf roundcubemail-1.6.0-complete.tar.gz 
+[root@mail1 jagdish]# mv roundcubemail-1.6.0 roundcubemail
+[root@mail1 jagdish]# sudo mv roundcubemail /var/www/html/
+[root@mail1 html]# sudo chown -R apache:apache /var/www/html/
+[root@mail1 html]# vi /etc/httpd/conf.d/roundcubemail.conf
+Alias /webmail /var/www/html/roundcubemail
+<VirtualHost *:80>
+ServerAdmin admin@jagdish.local
+ServerName mail1.jagdish.local
+DocumentRoot /var/www/html/roundcubemail
+<Directory /var/www/html/roundcubemail>
+#Allowoverride all
+Require all granted
+</Directory>
+</VirtualHost>
+[root@mail1 html]# sudo systemctl restart httpd
+http://IP or FQDN/roundcubemail/installer
+http://IP or FQDN/webmail/installer
+Set Details 
+Database setup
+[root@mail1 config]# pwd
+/var/www/html/roundcubemail/config
+[root@mail1 config]# cp config.inc.php config.inc.php.24-01-2023
+[root@mail1 config]# sudo chown apache:apache /var/www/html/roundcubemail/config/config.inc.php
+[root@mail1 config]# vi /var/www/html/roundcubemail/config/config.inc.php
+#Add below line in end
+$config['default_host'] = 'localhost';  ## If SSL is configured, use: $config['default_host'] = 'ssl//mail.example.com';
+$config['support_url'] = '';
+$config['defautl_port'] = 143;
+$config['smtp_server'] = 'localhost';   ## If SSL is confgured, use: $config['smtp_server'] = 'tls//mail1.bapl.org'; 
+$config['smtp_port'] = 587;
+$config['smtp_user'] = '%u';
+$config['smtp_pass'] = '%p';
+$config['smtp_auth_type'] = 'LOGIN';
+$config['debug_level'] = 1;
+$config['smtp_debug'] = true;
+$config['plugins'] = array('virtuser_query');                                                                    
+$config['virtuser_query'] = "SELECT Email FROM postfix_accounts.accounts_table WHERE Email = '%u'"; ## Enables Roundcube to use authentication for virtual users for outgoing mail
+
+[root@mail1 ~]# systemctl restart httpd
+[root@mail1 ~]# systemctl restart mariadb
+[root@mail1 ~]# systemctl restart postfix
+[root@mail1 ~]# systemctl restart dovecot
+
+Testing our Mail server
+After everything is set-up and ready to go, it is time to test whether we are capable of sending and receiving emails.Load your browser and enter https://IP-or-FQDN/roundcubemail or https://IP-or-FQDN/webmail
+Input any email account we configured earlier and its corresponding password.
+https://computingforgeeks.com/how-to-setup-mail-server-on-centos/(Setup Mail Server on CentOS 8 With Postfix, Dovecot, MySQL and RoundCube)
+Other Setting
+1)user login
+# vi /var/www/html/rouncubemail/confing/config.inc.php
+$config['username_domain'] = 'mydomain.com'; ( added your domain name)
+
+2)need to change the maximum attachment size in Roundcube from 2Mb to 10Mb, 
+#vi /etc/php.ini
+upload_max_filesize = 8M
+post_max_size = 8M 
+#sudo vi /etc/postfix/main.cf
+message_size_limit = 8194304
+3) quota support
+CREATE TABLE in account table in phpmyadmin
+quota_mb` int(11) unsigned DEFAULT NULL,
+#vi /etc/dovecot/dovecot.conf
+protocol imap {
+mail_plugins = quota imap_quota
+}
+protocol pop3 {
+mail_plugins = quota
+}
+
+plugin {
+quota = maildir:User quota
+quota_rule = *:storage=1G
+qutoa_rule2 = Trash:Storage=+10%%
+}
+
+4)SSL certificate
+
+You will need a SSL certificate for all encrypted mail communications (SMTPS/IMAPS/POP3S). If you do not have one, create one: 
+# cd /etc/ssl/
+#mkdir private/
+#cd /etc/ssl/private/
+# openssl req -new -x509 -nodes -newkey rsa:4096 -keyout vmail.key -out vmail.crt -days 1460 #days are optional
+# chmod 400 vmail.key
+# chmod 444 vmail.crt
+
+#sudo vi /etc/postfix/main.cf
+smtpd_tls_key_file = /etc/postfix/ssl/yourkey.key           ##SSL Key
+smtpd_tls_cert_file = /etc/postfix/ssl/yourcertificate.crt  ##SSL Cert
+
+$ sudo vi /etc/dovecot/conf.d/10-ssl.conf
+ssl = no ##If you want to use SSL here use ssl = required then add the files like:
+ssl = required
+ssl_cert = </etc/pki/dovecot/certs/dovecot.pem
+ssl_key = </etc/pki/dovecot/private/dovecot.pem
+5)Rotating Logs
+You can use logrotate to maintain the Dovecot log files so they don’t grow beyond a manageable size. Save the below scriptlet as /etc/logrotate.d/dovecot:
+/var/log/dovecot.log {
+  weekly
+  rotate 4
+  missingok
+  notifempty
+  compress
+  delaycompress
+  sharedscripts
+  postrotate
+  doveadm log reopen
+  endscript
+}
+
+
